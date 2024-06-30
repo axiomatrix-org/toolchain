@@ -1,4 +1,4 @@
-module backend-toolchain
+module github.com/axiomatrix-org/toolchain
 
 go 1.22
 
