@@ -1,8 +1,8 @@
 package jwt
 
 import (
-	"backend-toolchain/redis"
 	"errors"
+	"github.com/axiomatrix-org/toolchain/redis"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/dgrijalva/jwt-go.v3"
 	"net/http"
