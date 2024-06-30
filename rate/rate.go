@@ -55,7 +55,7 @@ func (rl *rateLimiter) cleanupVisitors() {
 	}
 }
 
-func rateLimitMiddleware(rl *rateLimiter) gin.HandlerFunc {
+func RateLimitMiddleware(rl *rateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
 		limiter := rl.getVisitor(ip)
