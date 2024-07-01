@@ -8,10 +8,10 @@ import (
 )
 
 type EmailConnection struct {
-	server   string
-	port     int
-	username string
-	password string
+	Server   string
+	Port     int
+	Username string
+	Password string
 }
 
 func SendPlainMail(
@@ -27,7 +27,7 @@ func SendPlainMail(
 	message.SetHeader("Subject", subject)
 	message.SetBody("text/plain", text)
 
-	d := gomail.NewDialer(conn.server, conn.port, conn.username, conn.password)
+	d := gomail.NewDialer(conn.Server, conn.Port, conn.Username, conn.Password)
 	if err := d.DialAndSend(message); err != nil {
 		fmt.Println(err)
 	}
@@ -59,7 +59,7 @@ func SendHTMLMail(
 	message.SetHeader("Subject", subject)
 	message.SetBody("text/html", body.String())
 
-	d := gomail.NewDialer(conn.server, conn.port, conn.username, conn.password)
+	d := gomail.NewDialer(conn.Server, conn.Port, conn.Username, conn.Password)
 	if err := d.DialAndSend(message); err != nil {
 		fmt.Println(err)
 		return
