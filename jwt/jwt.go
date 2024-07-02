@@ -117,6 +117,12 @@ func ParseToken(tokenString string, role int) (*TokenClaims, error) {
 		}
 
 		if claimToRole(claims.role) >= role {
+			if claims.role == "temp" { // temp級別的token只用來註冊，一經註冊即刻滅活
+				_, err := Kickoff(tokenString)
+				if err != nil {
+					return nil, err
+				}
+			}
 			return claims, nil
 		} else {
 			return nil, &TokenError{code: ErrCodeInvalidRole, message: "Invalid role"}
