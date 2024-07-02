@@ -80,7 +80,7 @@ func GenToken(username string, role string, exp int) (string, error) {
 		return "", err
 	}
 	if !redis.SetRedisClient() {
-		redis.SetValue(str, str, exp*60)
+		redis.SetValue(str, str, exp*3600)
 	} else {
 		return "", errors.New("no redis connections")
 	}
