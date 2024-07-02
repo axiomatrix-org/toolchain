@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"errors"
+	"fmt"
 	"github.com/axiomatrix-org/toolchain/redis"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/dgrijalva/jwt-go.v3"
@@ -12,9 +13,9 @@ import (
 
 // token claims
 type TokenClaims struct {
-	username string `json:"username"`
-	role     string `json:"role"`
-	exp      int    `json:"exp"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	Exp      int    `json:"exp"`
 	jwt.StandardClaims
 }
 
@@ -35,6 +36,11 @@ const (
 	ADMINROLE = 3
 	USERROLE  = 2
 	TEMPROLE  = 1
+)
+
+var (
+	ACCESS_TIME  = 1440
+	REFRESH_TIME = 2160
 )
 
 type TokenError struct {
@@ -62,13 +68,19 @@ func claimToRole(claim string) int {
 	}
 }
 
+func SetTime(access_time int, refresh_time int) {
+	ACCESS_TIME = access_time
+	REFRESH_TIME = refresh_time
+}
+
 // token generator
 func GenToken(username string, role string, exp int) (string, error) {
 	c := TokenClaims{
-		username: username,
-		role:     role,
+		Username: username,
+		Role:     role,
+		Exp:      exp,
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Hour * time.Duration(exp)).Unix(),
+			ExpiresAt: time.Now().Add(time.Minute * time.Duration(exp)).Unix(),
 			Issuer:    "org.axiomatrix.toolchain",
 			IssuedAt:  time.Now().Unix(),
 		},
@@ -108,7 +120,10 @@ func ParseToken(tokenString string, role int) (*TokenClaims, error) {
 
 	if claims, ok := token.Claims.(*TokenClaims); ok && token.Valid {
 		if !redis.SetRedisClient() {
-			_, err := redis.GetValue(tokenString)
+			str, err := redis.GetValue(tokenString)
+			if str == "" {
+				return nil, &TokenError{code: ErrCodeExpired, message: "Token is expired"}
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -116,8 +131,8 @@ func ParseToken(tokenString string, role int) (*TokenClaims, error) {
 			return nil, errors.New("no redis connections")
 		}
 
-		if claimToRole(claims.role) >= role {
-			if claims.role == "temp" { // temp級別的token只用來註冊，一經註冊即刻滅活
+		if claimToRole(claims.Role) >= role {
+			if claims.Role == "temp" { // temp級別的token只用來註冊，一經註冊即刻滅活
 				_, err := Kickoff(tokenString)
 				if err != nil {
 					return nil, err
@@ -135,10 +150,15 @@ func ParseToken(tokenString string, role int) (*TokenClaims, error) {
 // 滅活token
 func Kickoff(tokenString string) (bool, error) {
 	if !redis.SetRedisClient() {
-		_, err := redis.GetValue(tokenString)
+		str, err := redis.GetValue(tokenString)
 		if err != nil {
 			return false, err
 		}
+
+		if str == "" {
+			return false, errors.New("invalid token")
+		}
+
 		redis.DeleteValue(tokenString)
 		return true, nil
 	} else {
@@ -168,9 +188,10 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 			return
 		}
 
-		mc, err := ParseToken(parts[1], claimToRole(role))
+		_, err := ParseToken(parts[1], claimToRole(role))
 		if err != nil {
 			if TokenError, ok := err.(*TokenError); ok {
+				fmt.Println(TokenError)
 				switch TokenError.code {
 				case ErrCodeMalformed:
 					c.JSON(http.StatusBadRequest, gin.H{
@@ -198,7 +219,7 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 						c.Abort()
 						return
 					}
-					token, err := GenToken(mt.username, mt.role, TokenError.exp)
+					token, err := GenToken(mt.Username, mt.Role, ACCESS_TIME)
 					if err != nil {
 						c.JSON(http.StatusInternalServerError, gin.H{
 							"code": 500,
@@ -206,11 +227,9 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 						})
 						return
 					}
-					refresh, err := GenToken(mt.username, mt.role, mt.exp)
+					refresh, err := GenToken(mt.Username, mt.Role, REFRESH_TIME)
 					c.Writer.Header().Set("Refresh-Token", refresh)
 					c.Writer.Header().Set("Access-Token", token)
-					c.Set("username", mc.username)
-					c.Set("role", mc.role)
 					c.Next()
 					return
 				case ErrCodeNotValidYet:
@@ -237,8 +256,6 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 				}
 			}
 		}
-		c.Set("username", mc.username)
-		c.Set("role", mc.role)
 		c.Next()
 	}
 }
