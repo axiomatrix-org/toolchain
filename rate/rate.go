@@ -7,67 +7,52 @@ import (
 	"time"
 )
 
-type RateLimiter struct {
-	visitors map[string]*visitor
-	mu       sync.Mutex
-	rate     int
+type RequestInfo struct {
+	LastAccessTime time.Time
+	RequestCount   int
 }
 
-type visitor struct {
-	limiter  *time.Ticker
-	lastSeen time.Time
+var mutex = &sync.Mutex{}
+
+type RateLimitConfig struct {
+	maxRequests int
+	timeWindow  time.Duration
+	requestInfo map[string]*RequestInfo
 }
 
-func NewRateLimiter(rate int) *RateLimiter {
-	rl := &RateLimiter{
-		visitors: make(map[string]*visitor),
-		rate:     rate,
+func NewRateLimitConfig(maxRequests int, timeWindow time.Duration) *RateLimitConfig {
+	return &RateLimitConfig{
+		maxRequests: maxRequests,
+		timeWindow:  timeWindow,
+		requestInfo: make(map[string]*RequestInfo),
 	}
-	go rl.cleanupVisitors()
-	return rl
 }
 
-func (rl *RateLimiter) getVisitor(ip string) *time.Ticker {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
+func (r1 *RateLimitConfig) RateLimitMiddleware(c *gin.Context) {
+	ip := c.ClientIP()
+	mutex.Lock()
+	defer mutex.Unlock()
 
-	v, exists := rl.visitors[ip]
+	info, exists := r1.requestInfo[ip]
+
 	if !exists {
-		limiter := time.NewTicker(time.Second / time.Duration(rl.rate))
-		rl.visitors[ip] = &visitor{limiter, time.Now()}
-		return limiter
+		r1.requestInfo[ip] = &RequestInfo{LastAccessTime: time.Now(), RequestCount: 1}
+		return
 	}
-	v.lastSeen = time.Now()
-	return v.limiter
-}
 
-func (rl *RateLimiter) cleanupVisitors() {
-	for {
-		time.Sleep(time.Minute)
-		rl.mu.Lock()
-		for ip, v := range rl.visitors {
-			if time.Since(v.lastSeen) > 3*time.Minute {
-				delete(rl.visitors, ip)
-				v.limiter.Stop()
-			}
-		}
-		rl.mu.Unlock()
+	if time.Since(info.LastAccessTime) > r1.timeWindow {
+		info.RequestCount = 1
+		info.LastAccessTime = time.Now()
+		return
 	}
-}
 
-func RateLimitMiddleware(rl *RateLimiter) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ip := c.ClientIP()
-		limiter := rl.getVisitor(ip)
+	info.RequestCount++
 
-		select {
-		case <-limiter.C:
-			// Allow request
-		default:
-			// Too many requests
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "TOO MANY REQUESTS"})
-			return
-		}
-		c.Next()
+	if info.RequestCount > r1.maxRequests {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests"})
+		c.Abort()
+		return
 	}
+
+	info.LastAccessTime = time.Now()
 }
