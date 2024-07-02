@@ -89,3 +89,8 @@ func GetValue(key string) (string, error) {
 	}
 	return result, nil
 }
+
+// 刪除文字資料
+func DeleteValue(key string) {
+	client.Del(key)
+}
