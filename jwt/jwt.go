@@ -30,6 +30,13 @@ const (
 	ErrCodeInvalidRole  = 1005
 )
 
+const (
+	ROOTROLE  = 4
+	ADMINROLE = 3
+	USERROLE  = 2
+	TEMPROLE  = 1
+)
+
 type TokenError struct {
 	code    int
 	message string
@@ -38,6 +45,21 @@ type TokenError struct {
 
 func (e *TokenError) Error() string {
 	return e.message
+}
+
+func claimToRole(claim string) int {
+	switch claim {
+	case "root":
+		return ROOTROLE
+	case "admin":
+		return ADMINROLE
+	case "user":
+		return USERROLE
+	case "temp":
+		return TEMPROLE
+	default:
+		return 0
+	}
 }
 
 // token generator
@@ -65,7 +87,7 @@ func GenToken(username string, role string, exp int) (string, error) {
 	return str, nil
 }
 
-func ParseToken(tokenString string, role string) (*TokenClaims, error) {
+func ParseToken(tokenString string, role int) (*TokenClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &TokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(SECRET), nil
 	})
@@ -94,7 +116,7 @@ func ParseToken(tokenString string, role string) (*TokenClaims, error) {
 			return nil, errors.New("no redis connections")
 		}
 
-		if claims.role == role {
+		if claimToRole(claims.role) >= role {
 			return claims, nil
 		} else {
 			return nil, &TokenError{code: ErrCodeInvalidRole, message: "Invalid role"}
@@ -140,7 +162,7 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 			return
 		}
 
-		mc, err := ParseToken(parts[1], role)
+		mc, err := ParseToken(parts[1], claimToRole(role))
 		if err != nil {
 			if TokenError, ok := err.(*TokenError); ok {
 				switch TokenError.code {
@@ -161,7 +183,7 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 						c.Abort()
 						return
 					}
-					mt, err := ParseToken(refreshHeader, role)
+					mt, err := ParseToken(refreshHeader, claimToRole(role))
 					if err != nil {
 						c.JSON(http.StatusBadRequest, gin.H{
 							"code": 4002,
