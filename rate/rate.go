@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type rateLimiter struct {
+type RateLimiter struct {
 	visitors map[string]*visitor
 	mu       sync.Mutex
 	rate     int
@@ -18,8 +18,8 @@ type visitor struct {
 	lastSeen time.Time
 }
 
-func newRateLimiter(rate int) *rateLimiter {
-	rl := &rateLimiter{
+func NewRateLimiter(rate int) *RateLimiter {
+	rl := &RateLimiter{
 		visitors: make(map[string]*visitor),
 		rate:     rate,
 	}
@@ -27,7 +27,7 @@ func newRateLimiter(rate int) *rateLimiter {
 	return rl
 }
 
-func (rl *rateLimiter) getVisitor(ip string) *time.Ticker {
+func (rl *RateLimiter) getVisitor(ip string) *time.Ticker {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -41,7 +41,7 @@ func (rl *rateLimiter) getVisitor(ip string) *time.Ticker {
 	return v.limiter
 }
 
-func (rl *rateLimiter) cleanupVisitors() {
+func (rl *RateLimiter) cleanupVisitors() {
 	for {
 		time.Sleep(time.Minute)
 		rl.mu.Lock()
@@ -55,7 +55,7 @@ func (rl *rateLimiter) cleanupVisitors() {
 	}
 }
 
-func RateLimitMiddleware(rl *rateLimiter) gin.HandlerFunc {
+func RateLimitMiddleware(rl *RateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
 		limiter := rl.getVisitor(ip)
