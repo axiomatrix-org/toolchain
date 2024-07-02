@@ -85,6 +85,15 @@ func ParseToken(tokenString string, role string) (*TokenClaims, error) {
 	}
 
 	if claims, ok := token.Claims.(*TokenClaims); ok && token.Valid {
+		if !redis.SetRedisClient() {
+			_, err := redis.GetValue(tokenString)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, errors.New("no redis connections")
+		}
+
 		if claims.role == role {
 			return claims, nil
 		} else {
@@ -93,6 +102,20 @@ func ParseToken(tokenString string, role string) (*TokenClaims, error) {
 	}
 
 	return nil, errors.New("invalid token")
+}
+
+// 滅活token
+func Kickoff(tokenString string) (bool, error) {
+	if !redis.SetRedisClient() {
+		_, err := redis.GetValue(tokenString)
+		if err != nil {
+			return false, err
+		}
+		redis.DeleteValue(tokenString)
+		return true, nil
+	} else {
+		return false, errors.New("no redis connections")
+	}
 }
 
 func JWTAuthMiddleware(role string) func(c *gin.Context) {
