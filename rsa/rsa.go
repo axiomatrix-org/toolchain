@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
-	"fmt"
 )
 
 var keypair map[string]string = nil
@@ -55,7 +54,6 @@ func RsaEncryptBase64(originalData, publicKey string) (string, error) {
 	block, _ := pem.Decode([]byte(publicKey))
 	pubKey, parseErr := x509.ParsePKIXPublicKey(block.Bytes)
 	if parseErr != nil {
-		fmt.Println(parseErr)
 		return "", errors.New("Fail to parse public key")
 	}
 	encryptedData, err := rsa.EncryptPKCS1v15(rand.Reader, pubKey.(*rsa.PublicKey), []byte(originalData))
@@ -69,12 +67,11 @@ func RsaDecryptBase64(encryptedData, privateKey string) (string, error) {
 		return "", err
 	}
 	block, _ := pem.Decode([]byte(privateKey))
-	priKey, parseErr := x509.ParsePKCS8PrivateKey(block.Bytes)
+	priKey, parseErr := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if parseErr != nil {
-		fmt.Println(parseErr)
 		return "", errors.New("Fail to parse private key")
 	}
 
-	originalData, encryptErr := rsa.DecryptPKCS1v15(rand.Reader, priKey.(*rsa.PrivateKey), encryptedDecodeBytes)
+	originalData, encryptErr := rsa.DecryptPKCS1v15(rand.Reader, priKey, encryptedDecodeBytes)
 	return string(originalData), encryptErr
 }

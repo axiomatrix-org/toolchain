@@ -2,7 +2,6 @@ package jwt
 
 import (
 	"errors"
-	"fmt"
 	"github.com/axiomatrix-org/toolchain/redis"
 	"github.com/gin-gonic/gin"
 	"gopkg.in/dgrijalva/jwt-go.v3"
@@ -13,9 +12,9 @@ import (
 
 // token claims
 type TokenClaims struct {
-	Username string `json:"username"`
-	Role     string `json:"role"`
-	Exp      int    `json:"exp"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+	Exp   int    `json:"exp"`
 	jwt.StandardClaims
 }
 
@@ -74,11 +73,11 @@ func SetTime(access_time int, refresh_time int) {
 }
 
 // token generator
-func GenToken(username string, role string, exp int) (string, error) {
+func GenToken(email string, role string, exp int) (string, error) {
 	c := TokenClaims{
-		Username: username,
-		Role:     role,
-		Exp:      exp,
+		Email: email,
+		Role:  role,
+		Exp:   exp,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: time.Now().Add(time.Minute * time.Duration(exp)).Unix(),
 			Issuer:    "org.axiomatrix.toolchain",
@@ -92,7 +91,7 @@ func GenToken(username string, role string, exp int) (string, error) {
 		return "", err
 	}
 	if !redis.SetRedisClient() {
-		redis.SetValue(str, str, exp*60)
+		redis.SetValue(email, str, exp*60)
 	} else {
 		return "", errors.New("no redis connections")
 	}
@@ -120,9 +119,11 @@ func ParseToken(tokenString string, role int) (*TokenClaims, error) {
 
 	if claims, ok := token.Claims.(*TokenClaims); ok && token.Valid {
 		if !redis.SetRedisClient() {
-			str, err := redis.GetValue(tokenString)
+			str, err := redis.GetValue(claims.Email)
 			if str == "" {
 				return nil, &TokenError{code: ErrCodeExpired, message: "Token is expired"}
+			} else if str != tokenString {
+				return nil, &TokenError{code: ErrCodeInvalidToken, message: "Token is invalid"}
 			}
 			if err != nil {
 				return nil, err
@@ -133,7 +134,7 @@ func ParseToken(tokenString string, role int) (*TokenClaims, error) {
 
 		if claimToRole(claims.Role) >= role {
 			if claims.Role == "temp" { // temp級別的token只用來註冊，一經註冊即刻滅活
-				_, err := Kickoff(tokenString)
+				_, err := Kickoff(claims.Email)
 				if err != nil {
 					return nil, err
 				}
@@ -148,9 +149,9 @@ func ParseToken(tokenString string, role int) (*TokenClaims, error) {
 }
 
 // 滅活token
-func Kickoff(tokenString string) (bool, error) {
+func Kickoff(email string) (bool, error) {
 	if !redis.SetRedisClient() {
-		str, err := redis.GetValue(tokenString)
+		str, err := redis.GetValue(email)
 		if err != nil {
 			return false, err
 		}
@@ -159,7 +160,7 @@ func Kickoff(tokenString string) (bool, error) {
 			return false, errors.New("invalid token")
 		}
 
-		redis.DeleteValue(tokenString)
+		redis.DeleteValue(email)
 		return true, nil
 	} else {
 		return false, errors.New("no redis connections")
@@ -188,10 +189,9 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 			return
 		}
 
-		_, err := ParseToken(parts[1], claimToRole(role))
+		claims, err := ParseToken(parts[1], claimToRole(role))
 		if err != nil {
 			if TokenError, ok := err.(*TokenError); ok {
-				fmt.Println(TokenError)
 				switch TokenError.code {
 				case ErrCodeMalformed:
 					c.JSON(http.StatusBadRequest, gin.H{
@@ -219,7 +219,7 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 						c.Abort()
 						return
 					}
-					token, err := GenToken(mt.Username, mt.Role, ACCESS_TIME)
+					token, err := GenToken(mt.Email, mt.Role, ACCESS_TIME)
 					if err != nil {
 						c.JSON(http.StatusInternalServerError, gin.H{
 							"code": 500,
@@ -227,9 +227,10 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 						})
 						return
 					}
-					refresh, err := GenToken(mt.Username, mt.Role, REFRESH_TIME)
+					refresh, err := GenToken(mt.Email, mt.Role, REFRESH_TIME)
 					c.Writer.Header().Set("Refresh-Token", refresh)
 					c.Writer.Header().Set("Access-Token", token)
+					c.Set("email", claims.Email)
 					c.Next()
 					return
 				case ErrCodeNotValidYet:
@@ -253,9 +254,15 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 					})
 					c.Abort()
 					return
+				default:
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"code":    500,
+						"message": TokenError,
+					})
 				}
 			}
 		}
+		c.Set("email", claims.Email)
 		c.Next()
 	}
 }
