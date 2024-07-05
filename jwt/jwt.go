@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gopkg.in/dgrijalva/jwt-go.v3"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -74,8 +75,9 @@ func SetTime(access_time int, refresh_time int) {
 
 // token generator
 func GenToken(email string, role string, exp int) (string, error) {
+	key := email + strconv.FormatInt(time.Now().Unix(), 10)
 	c := TokenClaims{
-		Email: email,
+		Email: key,
 		Role:  role,
 		Exp:   exp,
 		StandardClaims: jwt.StandardClaims{
@@ -91,10 +93,11 @@ func GenToken(email string, role string, exp int) (string, error) {
 		return "", err
 	}
 	if !redis.SetRedisClient() {
-		redis.SetValue(email, str, exp*60)
+		redis.SetValue(key, str, exp*60)
 	} else {
 		return "", errors.New("no redis connections")
 	}
+	time.Sleep(time.Duration(2) * time.Millisecond)
 	return str, nil
 }
 
