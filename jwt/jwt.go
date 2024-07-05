@@ -234,6 +234,7 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 					c.Writer.Header().Set("Refresh-Token", refresh)
 					c.Writer.Header().Set("Access-Token", token)
 					c.Set("email", claims.Email)
+					c.Set("role", claims.Role)
 					c.Next()
 					return
 				case ErrCodeNotValidYet:
@@ -266,6 +267,7 @@ func JWTAuthMiddleware(role string) func(c *gin.Context) {
 			}
 		}
 		c.Set("email", claims.Email)
+		c.Set("role", claims.Role)
 		c.Next()
 	}
 }
