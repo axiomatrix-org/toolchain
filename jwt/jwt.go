@@ -75,7 +75,7 @@ func SetTime(access_time int, refresh_time int) {
 
 // token generator
 func GenToken(email string, role string, exp int) (string, error) {
-	key := email + strconv.FormatInt(time.Now().Unix(), 10)
+	key := email + strconv.FormatInt(time.Now().UnixMilli(), 10)
 	c := TokenClaims{
 		Email: key,
 		Role:  role,
